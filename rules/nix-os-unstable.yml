@@ -1,0 +1,164 @@
+## Not applicable to NixOS
+ca-certificates:
+  action: ignore
+
+## Fonts
+dejavu:
+  action: alias
+  alias: dejavu_fonts
+
+## Utilities
+xz-utils:
+  action: alias
+  alias: xz
+grep:
+  action: alias
+  alias: gnugrep
+sed:
+  action: alias
+  alias: gnused
+links:
+  action: alias
+  alias: links2
+
+# Development utilities
+make:
+  action: alias
+  alias: gnumake
+m4:
+  action: alias
+  alias: gnum4
+
+# X.org related utilities
+xorg-font-util:
+  action: alias
+  alias: xorg.fontutil
+xcb-util-render-util:
+  action: alias
+  alias: xorg.xcbutilrenderutil
+
+## Various libraries
+libexpat:
+  action: alias
+  alias: expat
+libtasn:
+  action: alias
+  alias: libtasn1
+gtk+-2:
+  action: alias
+  alias: gtk2
+gtk+-3:
+  action: alias
+  alias: gtk3
+
+# X.org libraries
+libice:
+  action: alias
+  alias: xorg.libICE
+libsm:
+  action: alias
+  alias: xorg.libSM
+libx11:
+  action: alias
+  alias: xorg.libX11
+libxau:
+  action: alias
+  alias: xorg.libXau
+libxaw:
+  action: alias
+  alias: xorg.libXaw
+libxcomposite:
+  action: alias
+  alias: xorg.libXcomposite
+libxcursor:
+  action: alias
+  alias: xorg.libXcursor
+libxdamage:
+  action: alias
+  alias: xorg.libXdamage
+libxdmcp:
+  action: alias
+  alias: xorg.libXdmcp
+libxext:
+  action: alias
+  alias: xorg.libXext
+libxfixes:
+  action: alias
+  alias: xorg.libXfixes
+libxfont2:
+  action: alias
+  alias: xorg.libXfont2
+libxft:
+  action: alias
+  alias: xorg.libXft
+libxi:
+  action: alias
+  alias: xorg.libXi
+libxinerama:
+  action: alias
+  alias: xorg.libXinerama
+libxmu:
+  action: alias
+  alias: xorg.libXmu
+libxpm:
+  action: alias
+  alias: xorg.libXpm
+libxrandr:
+  action: alias
+  alias: xorg.libXrandr
+libxrender:
+  action: alias
+  alias: xorg.libXrender
+libxres:
+  action: alias
+  alias: xorg.libXres
+libxscrnsaver:
+  action: alias
+  alias: xorg.libXScrnSaver
+libxt:
+  action: alias
+  alias: xorg.libXt
+libxtrans:
+  action: alias
+  alias: xorg.xtrans
+libxtst:
+  action: alias
+  alias: xorg.libXtst
+libxxf86dga:
+  action: alias
+  alias: xorg.libXxf86dga
+libxxf86vm:
+  action: alias
+  alias: xorg.libXxf86vm
+xorg-proto:
+  action: alias
+  alias: xorg.xorgproto
+xorg-util-macros:
+  action: alias
+  alias: xorg.utilmacros
+
+## QT Packages
+qtbase6:
+  action: alias
+  alias: qt6.qtbase
+qtdeclarative6:
+  action: alias
+  alias: qt6.qtdeclarative
+qtimageformats6:
+  action: alias
+  alias: qt6.qtimageformats
+qtlanguageserver6:
+  action: alias
+  alias: qt6.qtlanguageserver
+qtmultimedia6:
+  action: alias
+  alias: qt6.qtmultimedia
+qtshadertools6:
+  action: alias
+  alias: qt6.qtshadertools
+qtsvg6:
+  action: alias
+  alias: qt6.qtsvg
+qtwayland6:
+  action: alias
+  alias: qt6.qtwayland
