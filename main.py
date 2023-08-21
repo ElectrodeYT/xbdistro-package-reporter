@@ -216,7 +216,7 @@ class NixOSRepository(ForeignRepository):
         c.execute("CREATE TABLE IF NOT EXISTS nix_os_{}(package CHAR PRIMARY KEY, version CHAR)".format(branch))
 
         print("Importing NixOS repository, branch {}".format(branch))
-        # urllib.request.urlretrieve(self.url, self.package_brotli_file)
+        urllib.request.urlretrieve(self.url, self.package_brotli_file)
         with open(self.package_brotli_file, "rb") as file:
             self.package_raw_json = brotli.decompress(file.read())
         self.package_json = json.loads(self.package_raw_json)
