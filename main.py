@@ -21,11 +21,20 @@ import sqlite3
 import base64
 from contextlib import closing
 
+### SETTINGS
+### Change these things.
+# URL to the bootstrap repository of the xbstrap distribution.
 repo_url = "https://github.com/managarm/bootstrap-managarm.git"
+# Directory to clone into
 repo_dir = "boostrap-managarm"
-distro = XBStrapDistro(repo_dir)
+# Name of distribution
+distro_name = "Managarm"
 
+
+### CODE
+distro = XBStrapDistro(repo_dir)
 nix_os_repo = "https://channels.nixos.org/nixos-{}/packages.json.br"
+
 
 ignored_packages: [str] = []
 
@@ -33,7 +42,7 @@ ignored_packages: [str] = []
 class ReportPDF(FPDF):
     def header(self):
         self.set_font("helvetica", "B", 15)
-        self.cell(90, 10, "Managarm Package Report", 1, new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
+        self.cell(90, 10, "{} Package Report".format(distro_name), 1, new_x=XPos.RIGHT, new_y=YPos.TOP, align="C")
         self.ln(20)
 
     def footer(self) -> None:
@@ -379,8 +388,8 @@ def update_git_repo():
     if os.path.exists(os.path.join(repo_dir, ".git")):
         repo = Repo(repo_dir)
         assert not repo.bare
-        # origin = repo.remotes.origin
-        # origin.pull()
+        origin = repo.remotes.origin
+        origin.pull()
     else:
         repo = Repo.clone_from(repo_url, repo_dir)
         assert not repo.bare
@@ -411,7 +420,7 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
     # Print Title Page
     pdf.add_page()
     pdf.set_font("helvetica", size=24)
-    pdf.cell(0, 15, "Managarm Package Report", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+    pdf.cell(0, 15, "{} Package Report".format(distro_name), 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
     pdf.set_font("helvetica", size=20)
     pdf.cell(0, 15, "Summary", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("helvetica", size=12)
