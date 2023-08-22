@@ -27,20 +27,50 @@ from fpdf import FPDF, XPos, YPos
 import time
 from datetime import date
 
+# Email
+import email, smtplib, ssl
+from email import encoders
+from email.utils import parseaddr
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 ### SETTINGS
 ### Change these things.
 # URL to the bootstrap repository of the xbstrap distribution.
-repo_url = "https://github.com/managarm/bootstrap-managarm.git"
+repo_url: str = "https://github.com/managarm/bootstrap-managarm.git"
 # Directory to clone into
-repo_dir = "boostrap-managarm"
+repo_dir: str = "boostrap-managarm"
 # Name of distribution
-distro_name = "Managarm"
+distro_name: str = "Managarm"
 
+## Send emails
+send_emails: bool = False
+# Send the generic report email to everyone listed in the sql database
+send_generic_email: bool = False
+# Send an email to a maintainer whenever a package has gotten out of date
+send_maintainer_email: bool = False
+# Message unsubscribe contact
+message_unsubscribe_contact: str = ""
+# SMTP Host settings
+smtp_host: str = "localhost"
+smtp_port: int = 1025
+# Server uses TLS.
+smtp_is_secure: bool = False
+# Server supports AUTH extension, aka logins.
+# You probably want to set this to true.
+smtp_do_auth: bool = False
+# e-mail address.
+smtp_email_address: str = ""
+# User login and password.
+smtp_login_user: str = smtp_email_address
+smtp_login_password: str = ""
 
 ### CODE
 distro = XBStrapDistro(repo_dir)
 nix_os_repo = "https://channels.nixos.org/nixos-{}/packages.json.br"
 
+ssl_context = ssl.create_default_context()
 
 ignored_packages: [str] = []
 
@@ -368,7 +398,7 @@ class DistroPackageStatusDiff:
             # Check if a package that was in date has gotten out of date
             if libversion.version_compare2(package.upstream_version,
                                            package.version) > 0 and libversion.version_compare2(
-                    old_package.upstream_version, old_package.version) <= 0:
+                old_package.upstream_version, old_package.version) <= 0:
                 self.newly_out_of_date_packages.append(package.package)
 
 
@@ -408,6 +438,14 @@ def perform_init():
     distro.import_global_sources("bootstrap.yml")
     print("Reading packages")
     distro.import_packages("bootstrap.yml")
+
+
+def perform_db_init(c: sqlite3.Cursor):
+    c.execute(
+        "CREATE TABLE IF NOT EXISTS previous_check_json(unix_timestamp INT PRIMARY KEY, json_distro_state_b64 CHAR)")
+    c.execute(
+        "CREATE TABLE IF NOT EXISTS check_metadata(last_check CHAR, amount_ood INT, amount INT, unix_timestamp INT PRIMARY KEY)")
+    c.execute("CREATE TABLE IF NOT EXISTS generic_email_recipients(email CHAR PRIMARY KEY)")
 
 
 def pdf_add_new_page(pdf: ReportPDF, heading: str | None = None):
@@ -536,11 +574,112 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
                 row.cell(package.upstream_version)
 
     pdf.output(filename)
+    # Symlink the file to "latest-report.pdf"
+    if os.path.exists("latest-report.pdf"):
+        os.remove("latest-report.pdf")
+    os.symlink(filename, "latest-report.pdf")
+
+
+# Generate the generic report email.
+def generate_report_email(report_file: MIMEBase) -> MIMEMultipart:
+    message = MIMEMultipart()
+    message["From"] = smtp_email_address
+    message["Subject"] = date.today().strftime("{} package report for %d/%m/%Y".format(distro_name))
+
+    # Generate message body
+    body = "The latest package report for {} has been generated.\nTo unsubscribe from these reports, please contact {}." \
+        .format(distro_name, message_unsubscribe_contact)
+    message.attach(MIMEText(body, "plain"))
+
+    # Attach PDF file
+    message.attach(report_file)
+
+    return message
+
+
+# Generate the maintainer email.
+# We call this function for each maintainer, as a decent amount of stuff is randomized.
+def generate_maintainer_email(report_file: MIMEBase, package_list: [str]) -> MIMEMultipart:
+    message = MIMEMultipart()
+    message["From"] = smtp_email_address
+    message["Subject"] = date.today().strftime("{} package report for %d/%m/%Y".format(distro_name))
+
+    # Generate message body
+    body = "{} package{}, for which you are listed as the maintainer, {} become out of date.\n" \
+           "The packages are:{}\n" \
+           "See the package report PDF for more information and a full overview of the packages.\n\n" \
+           "You are receving this email as you are listed as a package maintainer.\n"\
+           "If you wish to no longer receive these emails, please submit a PR to " \
+           "https://github.com/managarm/bootstrap-managarm to remove yourself as maintainer." \
+        .format(len(package_list),
+                "s" if len(package_list) != 1 else "",
+                "have" if len(package_list) != 1 else "has",
+                "\n\t".join(["", *package_list]))
+    message.attach(MIMEText(body, "plain"))
+
+    # Attach PDF file
+    message.attach(report_file)
+
+    return message
+
+# Send all the mails
+# Assumes file "latest-report.pdf" is present.
+def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff: DistroPackageStatusDiff | None,
+               current_distro_status: DistroPackageStatus):
+    c.execute("SELECT email FROM generic_email_recipients")
+    recipients = c.fetchall()
+
+    # Read report PDF file and encode it for mails
+    report_file: MIMEBase = MIMEBase("application", "octet-stream")
+    with open("latest-report.pdf", "rb") as file:
+        report_file.set_payload(file.read())
+    encoders.encode_base64(report_file)
+    report_file.add_header("Content-Disposition", "attachment; filename=latest-report.pdf")
+
+    # Generate the email
+    if send_generic_email:
+        print("Sending generic emails")
+        generic_email = generate_report_email(report_file)
+        for recipient in recipients:
+            recipient = recipient[0]
+            customized_mail = copy.deepcopy(generic_email)
+            customized_mail["To"] = recipient
+            customized_mail["Bcc"] = recipient
+            server.sendmail(smtp_email_address, recipient, customized_mail.as_string())
+
+    if send_maintainer_email and diff is not None:
+        print("Sending maintainer emails")
+        maintainers_package_list: dict = dict()
+        # Check the package list
+        for package_name in diff.newly_out_of_date_packages:
+            package = current_distro_status.getPackage(package_name)
+            distro_package = distro.find_package_by_name(package_name)
+            email_addr = parseaddr(distro_package.metadata.maintainer)
+
+            package_string = package_name + ": local version is " + package.version + ", latest upstream is " +\
+                             package.upstream_version + " (found in " + package.upstream_repo + ")"
+
+            # First entry in tuple is name, second is email
+            if email_addr[1]:
+                if email_addr[1] in maintainers_package_list:
+                    maintainers_package_list[email_addr[1]].append(package_string)
+                else:
+                    maintainers_package_list[email_addr[1]] = [package_string]
+
+        # Now send the mails
+        for maintainer in maintainers_package_list.keys():
+            message = generate_maintainer_email(report_file, maintainers_package_list[maintainer])
+            message["To"] = maintainer
+            message["Bcc"] = maintainer
+            server.sendmail(smtp_email_address, maintainer, message.as_string())
 
 
 def main():
     database = sqlite3.connect("packages.db")
     perform_init()
+
+    with closing(database.cursor()) as c:
+        perform_db_init(c)
 
     print("Reading foreign repositories")
     foreign_repositories.append(NixOSRepository(database.cursor(), "unstable"))
@@ -554,18 +693,14 @@ def main():
     # If we do not, treat the current status as the diff
     diff: DistroPackageStatusDiff | None = None
     with closing(database.cursor()) as c:
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS previous_check_json(unix_timestamp INT PRIMARY KEY, json_distro_state_b64 CHAR)")
         c.execute("SELECT json_distro_state_b64 FROM previous_check_json ORDER BY unix_timestamp DESC LIMIT 1")
         base64_encoded = c.fetchone()
         if base64_encoded is not None:
             previous_check = DistroPackageStatus.fromJSON(base64.b64decode(base64_encoded[0]))
             diff = DistroPackageStatusDiff(current_distro_status, previous_check)
-
     pprint(diff)
+
     with closing(database.cursor()) as c:
-        c.execute(
-            "CREATE TABLE IF NOT EXISTS check_metadata(last_check CHAR, amount_ood INT, amount INT, unix_timestamp INT PRIMARY KEY)")
         c.execute("SELECT last_check, amount_ood, amount FROM check_metadata ORDER BY unix_timestamp DESC LIMIT 5")
         print_report_pdf(current_distro_status, diff, c.fetchall())
 
@@ -585,6 +720,18 @@ def main():
             base64_encoded))
 
     database.commit()
+
+    # Now do the mail sending, if needed
+    if send_emails:
+        with closing(database.cursor()) as c:
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                if smtp_is_secure:
+                    server.ehlo()
+                    server.starttls(context=ssl_context)
+                    server.ehlo()
+                if smtp_do_auth:
+                    server.login(smtp_login_user, smtp_login_password)
+                send_mails(c, server, diff, current_distro_status)
 
 
 if __name__ == '__main__':
