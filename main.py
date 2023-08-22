@@ -1,5 +1,7 @@
 import copy
 import os
+
+import XBStrapSQLite
 from git import Repo
 from XBStrapDistro import XBStrapDistro
 from pprint import pprint
@@ -35,6 +37,9 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+# Local things
+from Common import *
+
 ### SETTINGS
 ### Change these things.
 # URL to the bootstrap repository of the xbstrap distribution.
@@ -43,6 +48,10 @@ repo_url: str = "https://github.com/managarm/bootstrap-managarm.git"
 repo_dir: str = "boostrap-managarm"
 # Name of distribution
 distro_name: str = "Managarm"
+# Maintain a complete SQLite3 database of the distro.
+# Used for some more advanced API calls in the Flask server.
+maintain_xbdistro_sqllite_database: bool = True
+
 
 ## Send emails
 send_emails: bool = False
@@ -51,7 +60,13 @@ send_generic_email: bool = False
 # Send an email to a maintainer whenever a package has gotten out of date
 send_maintainer_email: bool = False
 # Message unsubscribe contact
+# Must be filled with instructions (such as a web link or an email contact) on how to unsubscribe from the generic
+# email mailing list
+# Recommended is to use the Flask web-server.py with its email code to produce an unsubscribe email.
 message_unsubscribe_contact: str = ""
+# If true, replace {} message_unsubscribe_contact with the destination email address
+message_unsubscribe_contact_fill_in_email: bool = False
+
 # SMTP Host settings
 smtp_host: str = "localhost"
 smtp_port: int = 1025
@@ -192,7 +207,9 @@ class DistroPackageStatus:
                                                    version=xb_package.source.version,
                                                    upstream_version=upstream_version,
                                                    upstream_repo=upstream_repo,
-                                                   found_upstream=found_upstream)
+                                                   found_upstream=found_upstream,
+                                                   file=xb_package.file,
+                                                   line=xb_package.line)
             self.packages.append(package)
 
     def toJSON(self):
@@ -207,15 +224,19 @@ class DistroPackageStatus:
         for package in dct["packages"]:
             if not ("package" in package and
                     "version" in package and
-                    "upstream_version" in package
-                    and "upstream_repo" in package
-                    and "found_upstream" in package):
+                    "upstream_version" in package and
+                    "upstream_repo" in package and
+                    "found_upstream" in package and
+                    "file" in package and
+                    "line" in package):
                 raise ValueError("Package '{}' is missing required entries")
             package: DistroPackage = DistroPackage(package=package["package"],
                                                    version=package["version"],
                                                    upstream_version=package["upstream_version"],
                                                    upstream_repo=package["upstream_repo"],
-                                                   found_upstream=package["found_upstream"])
+                                                   found_upstream=package["found_upstream"],
+                                                   file=package["file"],
+                                                   line=package["line"])
             ret.packages.append(package)
         return ret
 
@@ -325,7 +346,8 @@ def perform_db_init(c: sqlite3.Cursor):
     c.execute(
         "CREATE TABLE IF NOT EXISTS check_metadata(last_check CHAR, amount_ood INT, amount INT, unix_timestamp INT PRIMARY KEY)")
     c.execute("CREATE TABLE IF NOT EXISTS generic_email_recipients(email CHAR PRIMARY KEY)")
-
+    c.execute("CREATE TABLE IF NOT EXISTS generic_email_unsubscribe_key(email CHAR PRIMARY KEY, code CHAR)")
+    c.execute("CREATE TABLE IF NOT EXISTS generic_email_subscribe_key(code CHAR PRIMARY KEY, email CHAR)")
 
 def pdf_add_new_page(pdf: ReportPDF, heading: str | None = None):
     pdf.add_page()
@@ -364,78 +386,79 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
                 for cell in check:
                     row.cell(str(cell))
 
-    # Print page for packages which have gotten out of date
-    if len(diff.newly_out_of_date_packages):
-        pdf_add_new_page(pdf, "Newly out of date")
-        pdf.cell(0, 10, "The following packages have gotten out of date:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        with pdf.table() as table:
-            index_row = table.row()
-            index_row.cell("Package Name")
-            index_row.cell("Local Version")
-            index_row.cell("Upstream Version")
-            for name in diff.newly_out_of_date_packages:
-                row = table.row()
-                row.cell(name)
-                package = current_distro_status.getPackage(name)
-                if package is None:
-                    row.cell("Error getting package information: getPackage() returned None")
-                else:
-                    row.cell(package.version)
-                    row.cell(package.upstream_version)
+    if diff is not None:
+        # Print page for packages which have gotten out of date
+        if len(diff.newly_out_of_date_packages):
+            pdf_add_new_page(pdf, "Newly out of date")
+            pdf.cell(0, 10, "The following packages have gotten out of date:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            with pdf.table() as table:
+                index_row = table.row()
+                index_row.cell("Package Name")
+                index_row.cell("Local Version")
+                index_row.cell("Upstream Version")
+                for name in diff.newly_out_of_date_packages:
+                    row = table.row()
+                    row.cell(name)
+                    package = current_distro_status.getPackage(name)
+                    if package is None:
+                        row.cell("Error getting package information: getPackage() returned None")
+                    else:
+                        row.cell(package.version)
+                        row.cell(package.upstream_version)
 
-    if len(diff.upstream_updated_packages):
-        pdf_add_new_page(pdf, "Updated upstream")
-        pdf.cell(0, 10, "The following packages have been updated upstream:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        with pdf.table() as table:
-            index_row = table.row()
-            index_row.cell("Package Name")
-            index_row.cell("Local Version")
-            index_row.cell("Upstream Version")
-            for name in diff.upstream_updated_packages:
-                row = table.row()
-                row.cell(name)
-                package = current_distro_status.getPackage(name)
-                if package is None:
-                    row.cell("Error getting package information: getPackage() returned None")
-                else:
-                    row.cell(package.version)
-                    row.cell(package.upstream_version)
+        if len(diff.upstream_updated_packages):
+            pdf_add_new_page(pdf, "Updated upstream")
+            pdf.cell(0, 10, "The following packages have been updated upstream:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            with pdf.table() as table:
+                index_row = table.row()
+                index_row.cell("Package Name")
+                index_row.cell("Local Version")
+                index_row.cell("Upstream Version")
+                for name in diff.upstream_updated_packages:
+                    row = table.row()
+                    row.cell(name)
+                    package = current_distro_status.getPackage(name)
+                    if package is None:
+                        row.cell("Error getting package information: getPackage() returned None")
+                    else:
+                        row.cell(package.version)
+                        row.cell(package.upstream_version)
 
-    if len(diff.locally_updated_packages):
-        pdf_add_new_page(pdf, "Updated locally")
-        pdf.cell(0, 10, "The following packages have been updated locally:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        with pdf.table() as table:
-            index_row = table.row()
-            index_row.cell("Package Name")
-            index_row.cell("Local Version")
-            index_row.cell("Upstream Version")
-            for name in diff.locally_updated_packages:
-                row = table.row()
-                row.cell(name)
-                package = current_distro_status.getPackage(name)
-                if package is None:
-                    row.cell("Error getting package information: getPackage() returned None")
-                else:
-                    row.cell(package.version)
-                    row.cell(package.upstream_version)
+        if len(diff.locally_updated_packages):
+            pdf_add_new_page(pdf, "Updated locally")
+            pdf.cell(0, 10, "The following packages have been updated locally:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            with pdf.table() as table:
+                index_row = table.row()
+                index_row.cell("Package Name")
+                index_row.cell("Local Version")
+                index_row.cell("Upstream Version")
+                for name in diff.locally_updated_packages:
+                    row = table.row()
+                    row.cell(name)
+                    package = current_distro_status.getPackage(name)
+                    if package is None:
+                        row.cell("Error getting package information: getPackage() returned None")
+                    else:
+                        row.cell(package.version)
+                        row.cell(package.upstream_version)
 
-    if len(diff.new_packages):
-        pdf_add_new_page(pdf, "New packages")
-        pdf.cell(0, 10, "The following packages have been added:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        with pdf.table() as table:
-            index_row = table.row()
-            index_row.cell("Package Name")
-            index_row.cell("Local Version")
-            index_row.cell("Upstream Version")
-            for name in diff.new_packages:
-                row = table.row()
-                row.cell(name)
-                package = current_distro_status.getPackage(name)
-                if package is None:
-                    row.cell("Error getting package information: getPackage() returned None")
-                else:
-                    row.cell(package.version)
-                    row.cell(package.upstream_version)
+        if len(diff.new_packages):
+            pdf_add_new_page(pdf, "New packages")
+            pdf.cell(0, 10, "The following packages have been added:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            with pdf.table() as table:
+                index_row = table.row()
+                index_row.cell("Package Name")
+                index_row.cell("Local Version")
+                index_row.cell("Upstream Version")
+                for name in diff.new_packages:
+                    row = table.row()
+                    row.cell(name)
+                    package = current_distro_status.getPackage(name)
+                    if package is None:
+                        row.cell("Error getting package information: getPackage() returned None")
+                    else:
+                        row.cell(package.version)
+                        row.cell(package.upstream_version)
 
     out_of_date_packages = current_distro_status.getOutOfDatePackages()
     if len(out_of_date_packages):
@@ -460,14 +483,21 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
 
 
 # Generate the generic report email.
-def generate_report_email(report_file: MIMEBase) -> MIMEMultipart:
+def generate_report_email(report_file: MIMEBase, recipient: str) -> MIMEMultipart:
     message = MIMEMultipart()
     message["From"] = smtp_email_address
     message["Subject"] = date.today().strftime("{} package report for %d/%m/%Y".format(distro_name))
+    message["To"] = recipient
+    message["Bcc"] = recipient
 
     # Generate message body
-    body = "The latest package report for {} has been generated.\nTo unsubscribe from these reports, please contact {}." \
-        .format(distro_name, message_unsubscribe_contact)
+    body = "The latest package report for {} has been generated.\n" \
+        .format(distro_name)
+    if message_unsubscribe_contact:
+        if message_unsubscribe_contact_fill_in_email:
+            body += message_unsubscribe_contact.format(recipient)
+        else:
+            body += message_unsubscribe_contact
     message.attach(MIMEText(body, "plain"))
 
     # Attach PDF file
@@ -518,12 +548,9 @@ def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff:
     # Generate the email
     if send_generic_email:
         print("Sending generic emails")
-        generic_email = generate_report_email(report_file)
         for recipient in recipients:
             recipient = recipient[0]
-            customized_mail = copy.deepcopy(generic_email)
-            customized_mail["To"] = recipient
-            customized_mail["Bcc"] = recipient
+            customized_mail = generate_report_email(report_file, recipient)
             server.sendmail(smtp_email_address, recipient, customized_mail.as_string())
 
     if send_maintainer_email and diff is not None:
@@ -556,6 +583,11 @@ def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff:
 def main():
     database = sqlite3.connect("packages.db")
     perform_init()
+
+    if maintain_xbdistro_sqllite_database:
+        print("Creating XBDistro Tool SQLite database")
+        xbdistro_sql = XBStrapSQLite.XBStrapSQLite(distro, "xbdistro.db")
+        xbdistro_sql.update_database()
 
     with closing(database.cursor()) as c:
         perform_db_init(c)
