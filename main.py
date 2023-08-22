@@ -1,25 +1,31 @@
-from typing import Any
-
-from git import Repo
+import copy
 import os
+from git import Repo
 from XBStrapDistro import XBStrapDistro
-from XBStrapSQLite import XBStrapSQLite, XBStrapSQLiteChangeReport
 from pprint import pprint
-from datetime import date
 
 import libversion
-import brotli
-import urllib.request
-import json
 from dataclasses import dataclass
 
+# Needed for various things
 import yaml
-import time
 
-from fpdf import FPDF, XPos, YPos
+# Needed for nix-os
+import json
+import brotli
+import urllib.request
+
+# SQLite3
 import sqlite3
 import base64
 from contextlib import closing
+# Not used since it creates a bunch of data we dont need for this
+# from XBStrapSQLite import XBStrapSQLite, XBStrapSQLiteChangeReport
+
+# PDF
+from fpdf import FPDF, XPos, YPos
+import time
+from datetime import date
 
 ### SETTINGS
 ### Change these things.
