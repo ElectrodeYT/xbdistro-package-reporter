@@ -66,6 +66,9 @@ send_maintainer_email: bool = False
 message_unsubscribe_contact: str = ""
 # If true, replace {} message_unsubscribe_contact with the destination email address
 message_unsubscribe_contact_fill_in_email: bool = False
+# Fallback email address for packages without a maintainer
+# If empty, drop it
+no_maintainer_fallback_email = ""
 
 # SMTP Host settings
 smtp_host: str = "localhost"
@@ -475,6 +478,27 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
                 row.cell(package.version)
                 row.cell(package.upstream_version)
 
+    # Generate a list of maintainerless packages and print it as well
+    maintainerless_packages: [DistroPackage] = []
+    for distro_package in distro.packages:
+        if distro_package.metadata.maintainer is None or not distro_package.metadata.maintainer:
+            maintainerless_packages.append(current_distro_status.getPackage(distro_package.name))
+
+    if len(maintainerless_packages):
+        pdf_add_new_page(pdf, "Packages without maintainers")
+        pdf.cell(0, 10, "In total, the following packages have no defined maintainer:", 0, new_x=XPos.LMARGIN,
+                 new_y=YPos.NEXT)
+        with pdf.table() as table:
+            index_row = table.row()
+            index_row.cell("Package Name")
+            index_row.cell("Local Version")
+            index_row.cell("Upstream Version")
+            for package in maintainerless_packages:
+                row = table.row()
+                row.cell(package.package)
+                row.cell(package.version)
+                row.cell(package.upstream_version)
+
     pdf.output(filename)
     # Symlink the file to "latest-report.pdf"
     if os.path.exists("latest-report.pdf"):
@@ -517,9 +541,33 @@ def generate_maintainer_email(report_file: MIMEBase, package_list: [str]) -> MIM
     body = "{} package{}, for which you are listed as the maintainer, {} become out of date.\n" \
            "The packages are:{}\n" \
            "See the package report PDF for more information and a full overview of the packages.\n\n" \
-           "You are receving this email as you are listed as a package maintainer.\n"\
+           "You are receiving this email as you are listed as a package maintainer.\n"\
            "If you wish to no longer receive these emails, please submit a PR to " \
-           "https://github.com/managarm/bootstrap-managarm to remove yourself as maintainer." \
+           "{} to remove yourself as maintainer." \
+        .format(len(package_list),
+                "s" if len(package_list) != 1 else "",
+                "have" if len(package_list) != 1 else "has",
+                "\n\t".join(["", *package_list]),
+                repo_url)
+    message.attach(MIMEText(body, "plain"))
+
+    # Attach PDF file
+    message.attach(report_file)
+
+    return message
+
+
+def generate_maintainerless_email(report_file: MIMEBase, package_list: [str]) -> MIMEMultipart:
+    message = MIMEMultipart()
+    message["From"] = smtp_email_address
+    message["Subject"] = date.today().strftime("{} package report for %d/%m/%Y".format(distro_name))
+
+    # Generate message body
+    body = "{} package{}, which have no maintainers, {} become out of date.\n" \
+           "The packages are:{}\n" \
+           "See the package report PDF for more information and a full overview of the packages.\n\n" \
+           "You are receiving this email as you are listed as a package maintainer.\n"\
+           "If you wish to no longer receive these emails, contact the host of the package reporter. " \
         .format(len(package_list),
                 "s" if len(package_list) != 1 else "",
                 "have" if len(package_list) != 1 else "has",
@@ -556,14 +604,20 @@ def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff:
     if send_maintainer_email and diff is not None:
         print("Sending maintainer emails")
         maintainers_package_list: dict = dict()
+        maintainerless_packages: [] = []
         # Check the package list
         for package_name in diff.newly_out_of_date_packages:
             package = current_distro_status.getPackage(package_name)
             distro_package = distro.find_package_by_name(package_name)
+
+            package_string = package_name + ": local version is " + package.version + ", latest upstream is " + \
+                             package.upstream_version + " (found in " + package.upstream_repo + ")"
+
+            if distro_package.metadata.maintainer is None or distro_package.metadata.maintainer == "":
+                maintainerless_packages.append(package_string)
+                continue
             email_addr = parseaddr(distro_package.metadata.maintainer)
 
-            package_string = package_name + ": local version is " + package.version + ", latest upstream is " +\
-                             package.upstream_version + " (found in " + package.upstream_repo + ")"
 
             # First entry in tuple is name, second is email
             if email_addr[1]:
@@ -579,6 +633,12 @@ def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff:
             message["Bcc"] = maintainer
             server.sendmail(smtp_email_address, maintainer, message.as_string())
 
+        # If there are packages with no maintainer, send it to a fallback if present
+        if len(maintainerless_packages) and no_maintainer_fallback_email:
+            message = generate_maintainerless_email(report_file, maintainerless_packages)
+            message["To"] = no_maintainer_fallback_email
+            message["Bcc"] = no_maintainer_fallback_email
+            server.sendmail(smtp_email_address, no_maintainer_fallback_email, message.as_string())
 
 def main():
     database = sqlite3.connect("packages.db")
