@@ -389,6 +389,6 @@ def confirm_email_subscribe(code):
             c.execute("INSERT INTO generic_email_recipients(email) VALUES(?)", [email])
             c.execute("DELETE FROM generic_email_subscribe_key WHERE code = ? OR email = ?", [code, email])
             database.commit()
-    send_text_email(email, "This message is to confirm that you have been unsubscribed from regular package report"
-                           "emails. No further action is required from your end.", "Unsubscribe Conformation")
-    return "<p>You ({}) have been subscribed from regular package update emails.</p>".format(email)
+    send_text_email(email, "This message is to confirm that you have been subscribed to regular package report"
+                           "emails. No further action is required from your end.", "Subscription Conformation")
+    return "<p>You ({}) have been subscribed to regular package update emails.</p>".format(email)
