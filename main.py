@@ -478,11 +478,19 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
                 row.cell(package.version)
                 row.cell(package.upstream_version)
 
-    # Generate a list of maintainerless packages and print it as well
+    # Generate a list of maintainerless and newer-than-upstream packages and print it as well
     maintainerless_packages: [DistroPackage] = []
+    newer_than_upstream: [DistroPackage] = []
     for distro_package in distro.packages:
+        package = current_distro_status.getPackage(distro_package.name)
+        if package is None:
+            continue
         if distro_package.metadata.maintainer is None or not distro_package.metadata.maintainer:
-            maintainerless_packages.append(current_distro_status.getPackage(distro_package.name))
+            maintainerless_packages.append(package)
+        if package.is_local_rolling() or package.is_upstream_rolling() or not package.found_upstream:
+            continue
+        if package.upstream_version and libversion.version_compare2(package.version, package.upstream_version) > 0:
+            newer_than_upstream.append(package)
 
     if len(maintainerless_packages):
         pdf_add_new_page(pdf, "Packages without maintainers")
@@ -494,6 +502,21 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
             index_row.cell("Local Version")
             index_row.cell("Upstream Version")
             for package in maintainerless_packages:
+                row = table.row()
+                row.cell(package.package)
+                row.cell(package.version)
+                row.cell(package.upstream_version)
+
+    if len(newer_than_upstream):
+        pdf_add_new_page(pdf, "Packages newer than known upstream versions")
+        pdf.cell(0, 10, "In total, the following packages are newer than any known upstream version:", 0,
+                 new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        with pdf.table() as table:
+            index_row = table.row()
+            index_row.cell("Package Name")
+            index_row.cell("Local Version")
+            index_row.cell("Upstream Version")
+            for package in newer_than_upstream:
                 row = table.row()
                 row.cell(package.package)
                 row.cell(package.version)
