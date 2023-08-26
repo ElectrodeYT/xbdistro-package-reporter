@@ -64,6 +64,12 @@ class DistroPackage:
     def getPackageUpstreamFailedReason(self) -> str:
         return self.upstream_version
 
+    def is_local_rolling(self) -> bool:
+        return "ROLLING_ID" in self.version
+
+    def is_upstream_rolling(self) -> bool:
+        return "Rolling" in self.upstream_version
+
 
 @dataclass
 class UpstreamRequest:
