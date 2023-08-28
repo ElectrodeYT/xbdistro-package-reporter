@@ -2,6 +2,13 @@
 ca-certificates:
   action: ignore
 
+## Boot and Linux
+# NixOS has three different packages with the pname "linux-headers"
+# This one is the newest.
+linux-headers:
+  action: alias
+  alias: linuxHeaders
+
 ## Fonts
 dejavu:
   action: alias
