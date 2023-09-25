@@ -1,0 +1,19 @@
+<div>
+    {% if package.upstream_version %}
+        <p>Upstream Version: {{ package.upstream_version }}</p>
+    {% else %}
+        <p>Not found upstream</p>
+    {% endif %}
+    <p>Defined in {{ package.origin.file }}:{{ package.origin.line}}</p>
+
+    {% if extended_package_data %}
+        <p>Package Revision: {{ extended_package_data.revision }}</p>
+        {% if extended_package_data.metadata.maintainer %}
+            <p>Maintainer: {{ extended_package_data.metadata.maintainer }}</p>
+        {% else %}
+            <p>This package has no maintainer!</p>
+        {% endif %}
+        <p>Depends on: {{ extended_package_data.dependencies }}</p>
+        <p>Depended on by: {{ extended_package_data.dependent }}</p>
+    {% endif %}
+</div>

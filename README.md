@@ -7,3 +7,5 @@ The configuration here will fetch the newest version of bootstrap-managarm, and 
 # Installation
 
 Requires python packages `xbdistro-tools`, `fpdf2`, `libversion`, `brotli`, `GitPython`.
+
+For the web server, you will also need `flask` and `flask_caching`.

@@ -1,0 +1,13 @@
+*.db
+*.pdf
+*.br
+*.json
+bootstrap-managarm/
+.idea/
+*.bak
+
+__pycache__/
+Common/__pycache__/
+
+
+venv

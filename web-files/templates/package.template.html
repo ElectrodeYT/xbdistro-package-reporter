@@ -1,0 +1,21 @@
+{% if package.is_up_to_date or not package.upstream_version %}
+	{% set bg_colour = '#eee' %}
+{% else %}
+	{% set bg_colour = '#fc8b91' %}
+{% endif %}
+<div style="padding: 10px; background-color: {{ bg_colour }}; margin: 20px; line-height: 0.8;">
+	<h3 style="font-size: 24px">{{ package.name }}</h3>
+	<p>Local Version: {{ package.version }}</p>
+	{% if not package.is_up_to_date and package.upstream_version %}
+		<p>Out of date</p>
+	{% endif %}
+	{% if not no_collapsable %}
+	<button type="button" class="package-collapsible">Info</button>
+	<div class="package-content">
+		{% include "package-information.template.html" %}
+		<button type="button" class="package-button" onclick="location.href='{{ url_for("package_info_page", name=package.name) }}'">More Info...</button>
+	</div>
+	{% else %}
+	{% include "package-information.template.html" %}
+	{% endif %}
+</div>

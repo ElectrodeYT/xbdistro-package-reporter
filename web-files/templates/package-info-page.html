@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+    {% set no_collapsable = True %}
+
+	<head>
+		<title>{{ distro_name }} Package Reporter</title>
+		<style type="text/css">
+			body { font-family: sans-serif; }
+		</style>
+		{% include "package-css.template.html" %}
+	</head>
+
+	<body>
+		<p><a href="{{ url_for('main_page') }}">Return to main page</a></p>
+		<h1>{{ package.name }}</h1>
+		<div>
+            {% include "package.template.html" %}
+		</div>
+
+		{% include "package-scripts.template.html" %}
+	</body>
+</html>

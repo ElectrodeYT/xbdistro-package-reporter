@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Automated e-mail management</title>
+</head>
+
+<body>
+	<p>On this page, you can subscribe (or unsubscribe) from the automated {{ project_name }} Package Report mailing list.</p>
+	<h4>Subscribe:</h4>
+	<form action="/email/sub/begin" method="GET">
+		<input type="email" name="email">
+		<button type="submit">Submit</button>
+	</form>
+	<h4>Unsubscribe:</h4>
+	<form action="/email/unsub/begin" method="GET">
+		<input type="email" name="email">
+		<button type="submit">Submit</button>
+	</form>
+</body>
+</html>
