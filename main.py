@@ -45,7 +45,7 @@ from Common import *
 # URL to the bootstrap repository of the xbstrap distribution.
 repo_url: str = "https://github.com/managarm/bootstrap-managarm.git"
 # Directory to clone into
-repo_dir: str = "boostrap-managarm"
+repo_dir: str = "bootstrap-managarm"
 # Name of distribution
 distro_name: str = "Managarm"
 # Maintain a complete SQLite3 database of the distro.
