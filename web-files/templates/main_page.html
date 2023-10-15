@@ -11,7 +11,7 @@
 	<body>
 		<h1>{{ distro_name }} Package Reporter</h1>
 		<p>Number of known packages: {{ package_count }}</p>
-		<p>Number of out of date packages: {{ package_count }}</p>
+		<p>Number of out of date packages: {{ count_out_of_date }}</p>
 
 		<p>View the latest PDF report <a href="{{ url_for('download_latest_report') }}">here.</a></p>
 		<p>To subcribe to / unsubscribe from the regular, automated, report mailing list, view the form <a href="{{ url_for('email_page') }}">here.</a></p>
