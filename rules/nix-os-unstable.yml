@@ -174,3 +174,28 @@ qtsvg6:
 qtwayland6:
   action: alias
   alias: qt6.qtwayland
+
+## Media libraries
+# SDL2-related packages
+sdl2:
+  action: alias
+  alias: SDL2
+
+sdl2-ttf:
+  action: alias
+  alias: SDL2_ttf
+sdl2-net:
+  action: alias
+  alias: SDL2_net
+sdl2-gfx:
+  action: alias
+  alias: SDL2_gfx
+sdl2-sound:
+  action: alias
+  alias: SDL2_sound
+sdl2-mixer:
+  action: alias
+  alias: SDL2_mixer
+sdl2-image:
+  action: alias
+  alias: SDL2_image
