@@ -199,3 +199,9 @@ sdl2-mixer:
 sdl2-image:
   action: alias
   alias: SDL2_image
+
+## Development libraries
+mpc:
+  action: alias
+  alias: libmpc
+
