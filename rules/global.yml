@@ -32,3 +32,6 @@ base:
   action: ignore
 base-devel:
   action: ignore
+
+neofetch:
+  action: ignore
