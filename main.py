@@ -479,7 +479,7 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
 
         if len(diff.removed_packages):
             pdf_add_new_page(pdf, "Removed packages")
-            pdf.cell(0, 10, "The following packages have been removed from reporting (either they are no longer"
+            pdf.cell(0, 10, "The following packages have been removed from reporting\n(either they are no longer"
                             "available as packages, or they have been added to the ignore list):", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             with pdf.table() as table:
                 index_row = table.row()
