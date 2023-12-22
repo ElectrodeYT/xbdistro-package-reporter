@@ -52,7 +52,6 @@ distro_name: str = "Managarm"
 # Used for some more advanced API calls in the Flask server.
 maintain_xbdistro_sqllite_database: bool = True
 
-
 ## Send emails
 send_emails: bool = False
 # Send the generic report email to everyone listed in the sql database
@@ -90,7 +89,7 @@ nix_os_repo = "https://channels.nixos.org/nixos-{}/packages.json.br"
 
 ssl_context = ssl.create_default_context()
 
-ignored_packages: [str] = []
+global_rules: Rules = Rules("rules/global.yml")
 
 
 class ReportPDF(FPDF):
@@ -183,10 +182,10 @@ class DistroPackageStatus:
         if xb_distro is None:
             return
 
-        global ignored_packages
+        global global_rules
         for xb_package in xb_distro.packages:
-            # If this package is supposed to be ignored, then do so
-            if xb_package.name in ignored_packages:
+            package_name = global_rules.translatePackage(xb_package.name)
+            if package_name is None:
                 continue
 
             # Get upstream version and repo, and fill with blank if not found
@@ -198,7 +197,7 @@ class DistroPackageStatus:
             if "ROLLING" in xb_package.source.version:
                 upstream_version = "Rolling version"
             else:
-                upstream_result: UpstreamRequest = get_most_up_to_date_upstream_package(xb_package.name)
+                upstream_result: UpstreamRequest = get_most_up_to_date_upstream_package(package_name)
                 if upstream_result.found:
                     upstream_version = upstream_result.upstream_version
                     upstream_repo = upstream_result.newest_repo
@@ -206,7 +205,7 @@ class DistroPackageStatus:
                 else:
                     upstream_version = "Not found in repository (different name?)"
 
-            package: DistroPackage = DistroPackage(package=xb_package.name,
+            package: DistroPackage = DistroPackage(package=package_name,
                                                    version=xb_package.source.version,
                                                    upstream_version=upstream_version,
                                                    upstream_repo=upstream_repo,
@@ -270,12 +269,14 @@ class DistroPackageStatusDiff:
     locally_updated_packages: []
     upstream_updated_packages: []
     newly_out_of_date_packages: []
+    removed_packages: []
 
     def __init__(self, current: DistroPackageStatus, old: DistroPackageStatus):
         self.new_packages = []
         self.locally_updated_packages = []
         self.upstream_updated_packages = []
         self.newly_out_of_date_packages = []
+        self.removed_packages = []
 
         # We want to check if a package is new, has been removed, has gotten in date, or has gone further out of date
         # First, we iterate over the current set of packages
@@ -303,6 +304,17 @@ class DistroPackageStatusDiff:
                                            package.version) > 0 and libversion.version_compare2(
                 old_package.upstream_version, old_package.version) <= 0:
                 self.newly_out_of_date_packages.append(package.package)
+
+        # Now itereate through the old package list, checking that each package is also present in the new one,
+        # and adding them to the removed list if they are not
+        for package in old.packages:
+            new_package: DistroPackage | None = None
+            for new_package_search in current.packages:
+                if new_package_search.package == package.package:
+                    new_package = new_package_search
+                    break
+            if new_package is None and package.package not in self.removed_packages:
+                self.removed_packages.append(package.package)
 
 
 foreign_repositories: [ForeignRepository] = []
@@ -351,6 +363,7 @@ def perform_db_init(c: sqlite3.Cursor):
     c.execute("CREATE TABLE IF NOT EXISTS generic_email_recipients(email CHAR PRIMARY KEY)")
     c.execute("CREATE TABLE IF NOT EXISTS generic_email_unsubscribe_key(email CHAR PRIMARY KEY, code CHAR)")
     c.execute("CREATE TABLE IF NOT EXISTS generic_email_subscribe_key(code CHAR PRIMARY KEY, email CHAR)")
+
 
 def pdf_add_new_page(pdf: ReportPDF, heading: str | None = None):
     pdf.add_page()
@@ -411,7 +424,8 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
 
         if len(diff.upstream_updated_packages):
             pdf_add_new_page(pdf, "Updated upstream")
-            pdf.cell(0, 10, "The following packages have been updated upstream:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.cell(0, 10, "The following packages have been updated upstream:", 0, new_x=XPos.LMARGIN,
+                     new_y=YPos.NEXT)
             with pdf.table() as table:
                 index_row = table.row()
                 index_row.cell("Package Name")
@@ -462,6 +476,17 @@ def print_report_pdf(current_distro_status: DistroPackageStatus, diff: DistroPac
                     else:
                         row.cell(package.version)
                         row.cell(package.upstream_version)
+
+        if len(diff.removed_packages):
+            pdf_add_new_page(pdf, "Removed packages")
+            pdf.cell(0, 10, "The following packages have been removed from reporting (either they are no longer"
+                            "available as packages, or they have been added to the ignore list):", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            with pdf.table() as table:
+                index_row = table.row()
+                index_row.cell("Package Name")
+                for name in diff.removed_packages:
+                    row = table.row()
+                    row.cell(name)
 
     out_of_date_packages = current_distro_status.getOutOfDatePackages()
     if len(out_of_date_packages):
@@ -564,7 +589,7 @@ def generate_maintainer_email(report_file: MIMEBase, package_list: [str]) -> MIM
     body = "{} package{}, for which you are listed as the maintainer, {} become out of date.\n" \
            "The packages are:{}\n" \
            "See the package report PDF for more information and a full overview of the packages.\n\n" \
-           "You are receiving this email as you are listed as a package maintainer.\n"\
+           "You are receiving this email as you are listed as a package maintainer.\n" \
            "If you wish to no longer receive these emails, please submit a PR to " \
            "{} to remove yourself as maintainer." \
         .format(len(package_list),
@@ -589,7 +614,7 @@ def generate_maintainerless_email(report_file: MIMEBase, package_list: [str]) ->
     body = "{} package{}, which have no maintainers, {} become out of date.\n" \
            "The packages are:{}\n" \
            "See the package report PDF for more information and a full overview of the packages.\n\n" \
-           "You are receiving this email as you are listed as a package maintainer.\n"\
+           "You are receiving this email as you are listed as a package maintainer.\n" \
            "If you wish to no longer receive these emails, contact the host of the package reporter. " \
         .format(len(package_list),
                 "s" if len(package_list) != 1 else "",
@@ -601,6 +626,7 @@ def generate_maintainerless_email(report_file: MIMEBase, package_list: [str]) ->
     message.attach(report_file)
 
     return message
+
 
 # Send all the mails
 # Assumes file "latest-report.pdf" is present.
@@ -641,7 +667,6 @@ def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff:
                 continue
             email_addr = parseaddr(distro_package.metadata.maintainer)
 
-
             # First entry in tuple is name, second is email
             if email_addr[1]:
                 if email_addr[1] in maintainers_package_list:
@@ -662,6 +687,7 @@ def send_mails(c: sqlite3.Cursor, server: smtplib.SMTP_SSL | smtplib.SMTP, diff:
             message["To"] = no_maintainer_fallback_email
             message["Bcc"] = no_maintainer_fallback_email
             server.sendmail(smtp_email_address, no_maintainer_fallback_email, message.as_string())
+
 
 def main():
     database = sqlite3.connect("packages.db")
